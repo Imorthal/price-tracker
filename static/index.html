@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏷️ Price Tracker</h1>
+            <p class="subtitle">Verfolge Produktpreise und erhalte Benachrichtigungen bei Preisänderungen</p>
+        </header>
+
+        <div class="add-product-section">
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="productUrl"
+                    placeholder="Produkt-URL eingeben (z.B. Amazon, eBay, ...)"
+                    class="url-input"
+                >
+                <button onclick="addProduct()" class="btn btn-primary">
+                    Produkt hinzufügen
+                </button>
+                <button onclick="updateAllProducts()" class="btn btn-secondary">
+                    Alle aktualisieren
+                </button>
+            </div>
+            <div id="addProductMessage" class="message"></div>
+        </div>
+
+        <div class="stats-section">
+            <div class="stat-card">
+                <div class="stat-value" id="totalProducts">0</div>
+                <div class="stat-label">Produkte</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalSavings">0 €</div>
+                <div class="stat-label">Potentielle Ersparnis</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgPrice">0 €</div>
+                <div class="stat-label">Durchschnittspreis</div>
+            </div>
+        </div>
+
+        <div class="products-section">
+            <h2>Getrackte Produkte</h2>
+            <div id="loadingMessage" class="loading">Lade Produkte...</div>
+            <div id="productsContainer" class="products-grid"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
