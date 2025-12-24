@@ -34,8 +34,17 @@ body {
 }
 
 header {
-    text-align: center;
     margin-bottom: 3rem;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-content > div {
+    flex: 1;
 }
 
 h1 {

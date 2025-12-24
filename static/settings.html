@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Einstellungen - Price Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div>
+                    <h1>⚙️ Einstellungen</h1>
+                    <p class="subtitle">Konfiguriere deinen Price Tracker</p>
+                </div>
+                <a href="index.html" class="btn btn-secondary">← Zurück zur Übersicht</a>
+            </div>
+        </header>
+
+        <div id="settingsMessage" class="message"></div>
+
+        <!-- General Settings -->
+        <div class="settings-section">
+            <h2>Allgemeine Einstellungen</h2>
+            <div class="settings-card">
+                <div class="setting-item">
+                    <label for="scrapeInterval">
+                        Preis-Überprüfungs-Intervall (Minuten)
+                        <span class="setting-hint">Wie oft sollen Preise automatisch aktualisiert werden?</span>
+                    </label>
+                    <input
+                        type="number"
+                        id="scrapeInterval"
+                        min="5"
+                        max="1440"
+                        value="60"
+                        class="setting-input"
+                    >
+                </div>
+            </div>
+        </div>
+
+        <!-- Email Settings -->
+        <div class="settings-section">
+            <h2>E-Mail Benachrichtigungen</h2>
+            <div class="settings-card">
+                <div class="setting-item">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="emailEnabled" class="setting-checkbox">
+                        <span>E-Mail-Benachrichtigungen aktivieren</span>
+                    </label>
+                    <span class="setting-hint">Erhalte E-Mails wenn Preis-Alarme ausgelöst werden</span>
+                </div>
+
+                <div id="emailSettings" class="email-settings-container" style="display:none;">
+                    <div class="setting-item">
+                        <label for="emailSmtpHost">SMTP Server</label>
+                        <input
+                            type="text"
+                            id="emailSmtpHost"
+                            placeholder="z.B. smtp.gmail.com"
+                            class="setting-input"
+                        >
+                        <span class="setting-hint">Hostname deines E-Mail Anbieters</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="emailSmtpPort">SMTP Port</label>
+                        <input
+                            type="number"
+                            id="emailSmtpPort"
+                            value="587"
+                            class="setting-input"
+                        >
+                        <span class="setting-hint">Normalerweise 587 (TLS) oder 465 (SSL)</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="emailUseTls" class="setting-checkbox" checked>
+                            <span>TLS verwenden</span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="emailUser">E-Mail Benutzername</label>
+                        <input
+                            type="text"
+                            id="emailUser"
+                            placeholder="deine@email.com"
+                            class="setting-input"
+                        >
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="emailPassword">E-Mail Passwort</label>
+                        <input
+                            type="password"
+                            id="emailPassword"
+                            placeholder="••••••••"
+                            class="setting-input"
+                        >
+                        <span class="setting-hint">Für Gmail: Verwende ein App-Passwort</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="emailFrom">Absender-Adresse</label>
+                        <input
+                            type="email"
+                            id="emailFrom"
+                            placeholder="price-tracker@example.com"
+                            class="setting-input"
+                        >
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="emailTo">Empfänger-Adresse</label>
+                        <input
+                            type="email"
+                            id="emailTo"
+                            placeholder="deine@email.com"
+                            class="setting-input"
+                        >
+                        <span class="setting-hint">An diese Adresse werden Benachrichtigungen gesendet</span>
+                    </div>
+
+                    <div class="setting-item">
+                        <button onclick="testEmail()" class="btn btn-secondary">
+                            Test-E-Mail senden
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="settings-actions">
+            <button onclick="saveSettings()" class="btn btn-primary">
+                Einstellungen speichern
+            </button>
+            <button onclick="loadSettings()" class="btn btn-secondary">
+                Verwerfen
+            </button>
+        </div>
+
+        <!-- Quick Guide -->
+        <div class="settings-section">
+            <h2>📖 E-Mail Konfiguration Hilfe</h2>
+            <div class="settings-card">
+                <div class="guide-item">
+                    <h3>Gmail</h3>
+                    <ul>
+                        <li>SMTP Server: <code>smtp.gmail.com</code></li>
+                        <li>Port: <code>587</code> (TLS)</li>
+                        <li>Erstelle ein <a href="https://support.google.com/accounts/answer/185833" target="_blank">App-Passwort</a></li>
+                    </ul>
+                </div>
+
+                <div class="guide-item">
+                    <h3>Outlook/Hotmail</h3>
+                    <ul>
+                        <li>SMTP Server: <code>smtp.office365.com</code></li>
+                        <li>Port: <code>587</code> (TLS)</li>
+                    </ul>
+                </div>
+
+                <div class="guide-item">
+                    <h3>Yahoo</h3>
+                    <ul>
+                        <li>SMTP Server: <code>smtp.mail.yahoo.com</code></li>
+                        <li>Port: <code>587</code> (TLS)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="settings.js"></script>
+</body>
+</html>

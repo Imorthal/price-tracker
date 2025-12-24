@@ -89,6 +89,51 @@ class Database:
                 ON product_sources(product_id)
             ''')
 
+            # Settings table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT NOT NULL UNIQUE,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Price alerts table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS price_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER NOT NULL,
+                    source_id INTEGER,
+                    target_price REAL NOT NULL,
+                    enabled INTEGER DEFAULT 1,
+                    triggered INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    triggered_at TIMESTAMP,
+                    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
+                    FOREIGN KEY (source_id) REFERENCES product_sources (id) ON DELETE CASCADE
+                )
+            ''')
+
+            # Initialize default settings
+            default_settings = [
+                ('scrape_interval_minutes', '60'),
+                ('email_notifications_enabled', 'false'),
+                ('email_smtp_host', ''),
+                ('email_smtp_port', '587'),
+                ('email_smtp_user', ''),
+                ('email_smtp_password', ''),
+                ('email_from', ''),
+                ('email_to', ''),
+                ('email_use_tls', 'true'),
+            ]
+
+            for key, value in default_settings:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO settings (key, value)
+                    VALUES (?, ?)
+                ''', (key, value))
+
     def add_product(self, url, name=None):
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -244,3 +289,113 @@ class Database:
                 query += f' LIMIT {limit}'
             cursor.execute(query, (source_id,))
             return cursor.fetchall()
+
+    # Settings methods
+    def get_setting(self, key, default=None):
+        """Get a setting value"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT value FROM settings WHERE key = ?', (key,))
+            result = cursor.fetchone()
+            return result['value'] if result else default
+
+    def get_all_settings(self):
+        """Get all settings as a dict"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT key, value FROM settings')
+            return {row['key']: row['value'] for row in cursor.fetchall()}
+
+    def update_setting(self, key, value):
+        """Update or insert a setting"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO settings (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (key, value))
+
+    # Price alerts methods
+    def add_price_alert(self, product_id, target_price, source_id=None):
+        """Add a price alert"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO price_alerts (product_id, source_id, target_price)
+                VALUES (?, ?, ?)
+            ''', (product_id, source_id, target_price))
+            return cursor.lastrowid
+
+    def get_price_alerts(self, product_id=None, enabled_only=True):
+        """Get price alerts, optionally filtered by product"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            query = 'SELECT * FROM price_alerts'
+            params = []
+
+            conditions = []
+            if product_id:
+                conditions.append('product_id = ?')
+                params.append(product_id)
+            if enabled_only:
+                conditions.append('enabled = 1')
+
+            if conditions:
+                query += ' WHERE ' + ' AND '.join(conditions)
+
+            cursor.execute(query, params)
+            return cursor.fetchall()
+
+    def update_price_alert(self, alert_id, **kwargs):
+        """Update a price alert"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            set_clause = ', '.join([f'{k} = ?' for k in kwargs.keys()])
+            values = list(kwargs.values())
+            values.append(alert_id)
+            cursor.execute(
+                f'UPDATE price_alerts SET {set_clause} WHERE id = ?',
+                values
+            )
+
+    def delete_price_alert(self, alert_id):
+        """Delete a price alert"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM price_alerts WHERE id = ?', (alert_id,))
+
+    def check_price_alerts(self, product_id, source_id, current_price):
+        """Check if any alerts should be triggered for this price"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Find alerts that match and haven't been triggered
+            if source_id:
+                cursor.execute('''
+                    SELECT * FROM price_alerts
+                    WHERE product_id = ? AND source_id = ?
+                    AND enabled = 1 AND triggered = 0
+                    AND target_price >= ?
+                ''', (product_id, source_id, current_price))
+            else:
+                cursor.execute('''
+                    SELECT * FROM price_alerts
+                    WHERE product_id = ? AND source_id IS NULL
+                    AND enabled = 1 AND triggered = 0
+                    AND target_price >= ?
+                ''', (product_id, current_price))
+
+            triggered_alerts = cursor.fetchall()
+
+            # Mark alerts as triggered
+            for alert in triggered_alerts:
+                cursor.execute('''
+                    UPDATE price_alerts
+                    SET triggered = 1, triggered_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (alert['id'],))
+
+            return triggered_alerts

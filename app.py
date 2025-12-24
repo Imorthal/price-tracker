@@ -8,14 +8,16 @@ import os
 from config import Config
 from database import Database
 from scraper import PriceScraper
+from email_notifier import EmailNotifier
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
 app.config.from_object(Config)
 
-# Initialize database and scraper
+# Initialize database, scraper, and email notifier
 db = Database()
 scraper = PriceScraper()
+email_notifier = EmailNotifier()
 
 # Scheduler for automatic price updates
 scheduler = BackgroundScheduler()
@@ -46,6 +48,17 @@ def update_all_prices():
                 # Add to price history
                 db.add_price_history(product['id'], product_data['price'])
 
+                # Check for price alerts
+                triggered_alerts = db.check_price_alerts(product['id'], None, product_data['price'])
+                for alert in triggered_alerts:
+                    email_notifier.send_price_alert(
+                        product_name=product['name'],
+                        shop_name='Main Source',
+                        current_price=product_data['price'],
+                        target_price=alert['target_price'],
+                        product_url=product['url']
+                    )
+
                 print(f"Updated product {product['id']}: {product_data['price']} {product_data.get('currency', 'EUR')}")
 
             # Update all sources for this product
@@ -64,6 +77,17 @@ def update_all_prices():
 
                         # Add to price history for this source
                         db.add_source_price_history(product['id'], source['id'], source_data['price'])
+
+                        # Check for price alerts on this source
+                        triggered_alerts = db.check_price_alerts(product['id'], source['id'], source_data['price'])
+                        for alert in triggered_alerts:
+                            email_notifier.send_price_alert(
+                                product_name=product['name'],
+                                shop_name=source['shop_name'],
+                                current_price=source_data['price'],
+                                target_price=alert['target_price'],
+                                product_url=source['url']
+                            )
 
                         print(f"  Updated source {source['id']} ({source['shop_name']}): {source_data['price']} {source_data.get('currency', 'EUR')}")
 
@@ -373,6 +397,150 @@ def delete_product_source(source_id):
     try:
         db.delete_source(source_id)
         return jsonify({'message': 'Source deleted successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# Settings API
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get all settings"""
+    settings = db.get_all_settings()
+    return jsonify(settings)
+
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """Update settings"""
+    data = request.json
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    try:
+        for key, value in data.items():
+            db.update_setting(key, value)
+
+        return jsonify({'message': 'Settings updated successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/test-email', methods=['POST'])
+def test_email():
+    """Send a test email"""
+    try:
+        email_notifier.test_email_configuration()
+        return jsonify({'message': 'Test email sent successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# Price Alerts API
+@app.route('/api/alerts', methods=['GET'])
+def get_all_alerts():
+    """Get all price alerts"""
+    alerts = db.get_price_alerts(enabled_only=False)
+
+    alerts_list = []
+    for alert in alerts:
+        product = db.get_product(alert['product_id'])
+        source = db.get_source_by_url('') if not alert['source_id'] else None
+
+        if alert['source_id']:
+            sources = db.get_product_sources(alert['product_id'])
+            source = next((s for s in sources if s['id'] == alert['source_id']), None)
+
+        alerts_list.append({
+            'id': alert['id'],
+            'product_id': alert['product_id'],
+            'product_name': product['name'] if product else 'Unknown',
+            'source_id': alert['source_id'],
+            'shop_name': source['shop_name'] if source else 'All Shops',
+            'target_price': alert['target_price'],
+            'enabled': bool(alert['enabled']),
+            'triggered': bool(alert['triggered']),
+            'triggered_at': alert['triggered_at'],
+            'created_at': alert['created_at']
+        })
+
+    return jsonify(alerts_list)
+
+
+@app.route('/api/products/<int:product_id>/alerts', methods=['GET'])
+def get_product_alerts(product_id):
+    """Get price alerts for a product"""
+    alerts = db.get_price_alerts(product_id=product_id, enabled_only=False)
+
+    alerts_list = []
+    for alert in alerts:
+        source = None
+        if alert['source_id']:
+            sources = db.get_product_sources(product_id)
+            source = next((s for s in sources if s['id'] == alert['source_id']), None)
+
+        alerts_list.append({
+            'id': alert['id'],
+            'source_id': alert['source_id'],
+            'shop_name': source['shop_name'] if source else 'All Shops',
+            'target_price': alert['target_price'],
+            'enabled': bool(alert['enabled']),
+            'triggered': bool(alert['triggered']),
+            'triggered_at': alert['triggered_at'],
+            'created_at': alert['created_at']
+        })
+
+    return jsonify(alerts_list)
+
+
+@app.route('/api/products/<int:product_id>/alerts', methods=['POST'])
+def create_price_alert(product_id):
+    """Create a price alert for a product"""
+    product = db.get_product(product_id)
+
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+
+    data = request.json
+    if not data or 'target_price' not in data:
+        return jsonify({'error': 'target_price is required'}), 400
+
+    try:
+        target_price = float(data['target_price'])
+        source_id = data.get('source_id')  # Optional
+
+        alert_id = db.add_price_alert(product_id, target_price, source_id)
+
+        return jsonify({
+            'id': alert_id,
+            'message': 'Price alert created successfully'
+        }), 201
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<int:alert_id>', methods=['PATCH'])
+def update_alert(alert_id):
+    """Update a price alert"""
+    data = request.json
+
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    try:
+        db.update_price_alert(alert_id, **data)
+        return jsonify({'message': 'Alert updated successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
+def delete_alert(alert_id):
+    """Delete a price alert"""
+    try:
+        db.delete_price_alert(alert_id)
+        return jsonify({'message': 'Alert deleted successfully'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
