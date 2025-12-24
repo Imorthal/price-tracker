@@ -182,7 +182,13 @@ function createProductCard(product) {
 
             <div class="price-info">
                 <div class="current-price">
-                    ${formatPriceWithConversion(product.current_price, product.currency)}
+                    ${product.current_price_chf ? `${product.current_price_chf.toFixed(2)} CHF` : 'N/A'}
+                    ${product.currency !== 'CHF' && product.current_price ? `
+                        <span class="price-converted-info">
+                            <span class="info-icon" title="Umgerechnet von ${product.currency}">i</span>
+                            (${product.current_price.toFixed(2)} ${product.currency})
+                        </span>
+                    ` : ''}
                 </div>
                 ${priceChangeHTML}
             </div>
@@ -191,11 +197,11 @@ function createProductCard(product) {
                 <div class="price-stats">
                     <div class="price-stat">
                         <div class="price-stat-label">Niedrigster</div>
-                        <div class="price-stat-value low">${product.lowest_price.toFixed(2)} €</div>
+                        <div class="price-stat-value low">${product.lowest_price.toFixed(2)} CHF</div>
                     </div>
                     <div class="price-stat">
                         <div class="price-stat-label">Höchster</div>
-                        <div class="price-stat-value high">${product.highest_price.toFixed(2)} €</div>
+                        <div class="price-stat-value high">${product.highest_price.toFixed(2)} CHF</div>
                     </div>
                 </div>
             ` : ''}
@@ -217,7 +223,15 @@ function createProductCard(product) {
                         <div class="source-item">
                             <div class="source-info">
                                 <span class="source-shop">${source.shop_name || 'Unbekannt'}</span>
-                                <span class="source-price">${formatPriceWithConversion(source.current_price, source.currency)}</span>
+                                <span class="source-price">
+                                    ${source.current_price_chf ? `${source.current_price_chf.toFixed(2)} CHF` : 'N/A'}
+                                    ${source.currency !== 'CHF' && source.current_price ? `
+                                        <span class="price-converted-info" style="font-size: 0.75rem;">
+                                            <span class="info-icon" title="Umgerechnet von ${source.currency}">i</span>
+                                            (${source.current_price.toFixed(2)} ${source.currency})
+                                        </span>
+                                    ` : ''}
+                                </span>
                             </div>
                             <div class="source-actions">
                                 <a href="${source.url}" target="_blank" class="source-link">→</a>
@@ -230,6 +244,13 @@ function createProductCard(product) {
 
             <div class="price-alert-section ${product.alert ? 'alert-active' : ''}" id="alert-section-${product.id}">
                 <h4>${product.alert ? '🔔 Preis-Alarm aktiv' : '⚠️ Preis-Alarm setzen'}</h4>
+                ${!product.alert ? `
+                    <div style="font-size: 0.85rem; margin-bottom: 0.5rem; color: #92400e;">
+                        Bester aktueller Preis: <strong>${product.lowest_price ? product.lowest_price.toFixed(2) + ' CHF' : 'N/A'}</strong>
+                        <br>
+                        <em>Alarm gilt für alle Shops - du wirst benachrichtigt wenn irgendein Shop deinen Zielpreis erreicht.</em>
+                    </div>
+                ` : ''}
                 <div class="alert-input-group">
                     <input
                         type="number"
@@ -246,9 +267,9 @@ function createProductCard(product) {
                         ${product.alert ? 'Entfernen' : 'Setzen'}
                     </button>
                 </div>
-                ${product.alert && product.alert.triggered ? `
+                ${product.alert ? `
                     <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #065f46;">
-                        ✓ Alarm wurde ausgelöst am ${formatDate(product.alert.triggered_at)}
+                        ${product.alert.triggered ? `✓ Alarm wurde ausgelöst am ${formatDate(product.alert.triggered_at)}` : `Zielpreis: <strong>${product.alert.target_price.toFixed(2)} CHF</strong> - Aktuell bester Preis: <strong>${product.lowest_price ? product.lowest_price.toFixed(2) + ' CHF' : 'N/A'}</strong>`}
                     </div>
                 ` : ''}
             </div>
@@ -406,19 +427,19 @@ async function updateAllProducts() {
 function updateStats(products) {
     const totalProducts = products.length;
     const totalSavings = products.reduce((sum, p) => {
-        if (p.current_price && p.highest_price) {
-            return sum + (p.highest_price - p.current_price);
+        if (p.current_price_chf && p.highest_price) {
+            return sum + (p.highest_price - p.current_price_chf);
         }
         return sum;
     }, 0);
 
     const avgPrice = products.length > 0
-        ? products.reduce((sum, p) => sum + (p.current_price || 0), 0) / products.length
+        ? products.reduce((sum, p) => sum + (p.current_price_chf || 0), 0) / products.length
         : 0;
 
     document.getElementById('totalProducts').textContent = totalProducts;
-    document.getElementById('totalSavings').textContent = `${totalSavings.toFixed(2)} €`;
-    document.getElementById('avgPrice').textContent = `${avgPrice.toFixed(2)} €`;
+    document.getElementById('totalSavings').textContent = `${totalSavings.toFixed(2)} CHF`;
+    document.getElementById('avgPrice').textContent = `${avgPrice.toFixed(2)} CHF`;
 }
 
 // Show message

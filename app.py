@@ -181,13 +181,38 @@ def get_products():
         # Get all sources for this product
         sources = db.get_product_sources(product['id'])
         sources_list = []
+
+        # Collect all prices in CHF for min/max calculation
+        all_chf_prices = []
+
+        # Convert main product price to CHF
+        if product['current_price']:
+            main_chf = currency_converter.convert_to_chf(
+                product['current_price'],
+                product['currency']
+            )
+            all_chf_prices.append(main_chf)
+        else:
+            main_chf = None
+
         for source in sources:
             source_history = db.get_source_price_history(source['id'], limit=30)
+
+            # Convert source price to CHF
+            source_chf = None
+            if source['current_price']:
+                source_chf = currency_converter.convert_to_chf(
+                    source['current_price'],
+                    source['currency']
+                )
+                all_chf_prices.append(source_chf)
+
             sources_list.append({
                 'id': source['id'],
                 'url': source['url'],
                 'shop_name': source['shop_name'],
                 'current_price': source['current_price'],
+                'current_price_chf': source_chf,
                 'currency': source['currency'],
                 'last_checked': source['last_checked'],
                 'price_history': [
@@ -196,17 +221,22 @@ def get_products():
                 ]
             })
 
+        # Calculate min/max in CHF from all sources
+        lowest_chf = min(all_chf_prices) if all_chf_prices else None
+        highest_chf = max(all_chf_prices) if all_chf_prices else None
+
         products_list.append({
             'id': product['id'],
             'url': product['url'],
             'name': product['name'],
             'current_price': product['current_price'],
+            'current_price_chf': main_chf,
             'currency': product['currency'],
             'image_url': product['image_url'],
             'created_at': product['created_at'],
             'last_checked': product['last_checked'],
-            'lowest_price': db.get_lowest_price(product['id']),
-            'highest_price': db.get_highest_price(product['id']),
+            'lowest_price': lowest_chf,
+            'highest_price': highest_chf,
             'price_history': [
                 {'price': p['price'], 'timestamp': p['timestamp']}
                 for p in price_history
