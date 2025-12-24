@@ -16,7 +16,7 @@ class PriceScraper:
             'Upgrade-Insecure-Requests': '1'
         }
 
-    def scrape_product(self, url):
+    def scrape_product(self, url, debug=False):
         """
         Scrape product information from URL.
         Returns dict with name, price, currency, and image_url.
@@ -32,21 +32,39 @@ class PriceScraper:
             soup = BeautifulSoup(response.content, 'lxml')
             domain = urlparse(url).netloc.lower()
 
+            if debug:
+                print(f"\n=== DEBUG: Scraping {url} ===")
+                print(f"Domain: {domain}")
+                print(f"Response status: {response.status_code}")
+                print(f"Content length: {len(response.content)} bytes")
+
             # Try to detect the shop and use specific selectors
             if 'amazon' in domain:
-                return self._scrape_amazon(soup, url)
+                result = self._scrape_amazon(soup, url)
             elif 'ebay' in domain:
-                return self._scrape_ebay(soup, url)
+                result = self._scrape_ebay(soup, url)
             elif 'brack.ch' in domain:
-                return self._scrape_brack(soup, url)
+                result = self._scrape_brack(soup, url)
             elif 'digitec.ch' in domain:
-                return self._scrape_digitec(soup, url)
+                result = self._scrape_digitec(soup, url)
             else:
                 # Generic scraping
-                return self._scrape_generic(soup, url)
+                result = self._scrape_generic(soup, url)
+
+            if debug:
+                print(f"Scraped result: {result}")
+                if not result or not result.get('price'):
+                    print("WARNING: No price found!")
+                    # Print first 500 chars of page text for debugging
+                    page_text = soup.get_text()[:500]
+                    print(f"Page text sample: {page_text}")
+
+            return result
 
         except Exception as e:
             print(f"Error scraping {url}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _scrape_amazon(self, soup, url):
@@ -173,33 +191,96 @@ class PriceScraper:
             'image_url': None
         }
 
-        # Product name
-        title_elem = soup.find('h1', {'class': 'product-name'}) or \
-                     soup.find('h1', {'data-test': 'productName'}) or \
-                     soup.find('h1')
-        if title_elem:
-            product['name'] = title_elem.get_text().strip()
+        # Product name - multiple selectors
+        title_selectors = [
+            ('h1', {'class': 'product-name'}),
+            ('h1', {'class': 'product__name'}),
+            ('h1', {'class': 'product-title'}),
+            ('h1', {'data-test': 'productName'}),
+            ('h1', {}),
+            ('meta', {'property': 'og:title'})
+        ]
 
-        # Price - Brack uses various price containers
-        price_elem = soup.find('span', {'class': 'price'}) or \
-                     soup.find('div', {'class': 'product-price'}) or \
-                     soup.find('span', {'data-test': 'productPrice'})
+        for tag, attrs in title_selectors:
+            elem = soup.find(tag, attrs)
+            if elem:
+                if tag == 'meta':
+                    product['name'] = elem.get('content', '').strip()
+                else:
+                    product['name'] = elem.get_text().strip()
+                if product['name']:
+                    break
 
-        if price_elem:
-            price_text = price_elem.get_text()
-            price = self._extract_price(price_text)
-            if price:
-                product['price'] = price
+        # Price - multiple approaches for Brack
+        # 1. Try common price selectors
+        price_selectors = [
+            ('span', {'class': 'price'}),
+            ('div', {'class': 'product-price'}),
+            ('span', {'data-test': 'productPrice'}),
+            ('span', {'class': 'product__price'}),
+            ('div', {'class': 'price-box'}),
+            ('span', {'itemprop': 'price'}),
+        ]
 
-        # If no price found, try to find it in meta tags
+        for tag, attrs in price_selectors:
+            elem = soup.find(tag, attrs)
+            if elem:
+                price_text = elem.get_text()
+                price = self._extract_price(price_text)
+                if price:
+                    product['price'] = price
+                    break
+
+        # 2. Try meta tags
         if not product['price']:
-            price_meta = soup.find('meta', {'property': 'product:price:amount'}) or \
-                        soup.find('meta', {'property': 'og:price:amount'})
-            if price_meta and price_meta.get('content'):
-                try:
-                    product['price'] = float(price_meta['content'])
-                except:
-                    pass
+            meta_selectors = [
+                {'property': 'product:price:amount'},
+                {'property': 'og:price:amount'},
+                {'name': 'product:price:amount'}
+            ]
+            for selector in meta_selectors:
+                price_meta = soup.find('meta', selector)
+                if price_meta and price_meta.get('content'):
+                    try:
+                        product['price'] = float(price_meta['content'].replace(',', '.'))
+                        break
+                    except:
+                        pass
+
+        # 3. Try JSON-LD structured data
+        if not product['price']:
+            try:
+                import json
+                json_ld = soup.find('script', {'type': 'application/ld+json'})
+                if json_ld:
+                    data = json.loads(json_ld.string)
+                    if isinstance(data, dict):
+                        if 'offers' in data:
+                            offers = data['offers']
+                            if isinstance(offers, dict) and 'price' in offers:
+                                product['price'] = float(offers['price'])
+                            elif isinstance(offers, list) and len(offers) > 0:
+                                product['price'] = float(offers[0].get('price', 0))
+            except:
+                pass
+
+        # 4. Fallback: search for price patterns in page text
+        if not product['price']:
+            page_text = soup.get_text()
+            # Swiss price patterns (CHF with apostrophe thousands separator)
+            patterns = [
+                r"(?:CHF|Fr\.)\s*([0-9]+'[0-9]{3}\.[0-9]{2})",
+                r"(?:CHF|Fr\.)\s*([0-9]+\.[0-9]{2})",
+                r"([0-9]+'[0-9]{3}\.[0-9]{2})\s*(?:CHF|Fr\.)",
+                r"([0-9]+\.[0-9]{2})\s*(?:CHF|Fr\.)"
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, page_text)
+                if match:
+                    price = self._extract_price(match.group(1))
+                    if price and 1 <= price <= 100000:  # Sanity check
+                        product['price'] = price
+                        break
 
         # Image
         img_elem = soup.find('img', {'class': 'product-image'}) or \
@@ -224,40 +305,106 @@ class PriceScraper:
             'image_url': None
         }
 
-        # Product name
-        title_elem = soup.find('h1', {'class': 'productTitle'}) or \
-                     soup.find('h1', {'data-test': 'productName'}) or \
-                     soup.find('strong', {'data-test': 'productName'}) or \
-                     soup.find('h1')
-        if title_elem:
-            product['name'] = title_elem.get_text().strip()
+        # Product name - multiple selectors
+        title_selectors = [
+            ('h1', {'class': 'productTitle'}),
+            ('h1', {'data-test': 'productName'}),
+            ('strong', {'data-test': 'productName'}),
+            ('h1', {'class': 'product-title'}),
+            ('h1', {}),
+            ('meta', {'property': 'og:title'})
+        ]
 
-        # Price - Digitec structure
-        price_elem = soup.find('strong', {'data-test': 'productPrice'}) or \
-                     soup.find('span', {'class': 'price'}) or \
-                     soup.find('div', {'class': 'product-price'})
+        for tag, attrs in title_selectors:
+            elem = soup.find(tag, attrs)
+            if elem:
+                if tag == 'meta':
+                    product['name'] = elem.get('content', '').strip()
+                else:
+                    product['name'] = elem.get_text().strip()
+                if product['name']:
+                    break
 
-        if price_elem:
-            price_text = price_elem.get_text()
-            price = self._extract_price(price_text)
-            if price:
-                product['price'] = price
+        # Price - multiple approaches for Digitec/Galaxus
+        # 1. Try common price selectors
+        price_selectors = [
+            ('strong', {'data-test': 'productPrice'}),
+            ('span', {'data-test': 'productPrice'}),
+            ('div', {'data-test': 'productPrice'}),
+            ('span', {'class': 'price'}),
+            ('div', {'class': 'product-price'}),
+            ('span', {'class': 'product__price'}),
+            ('span', {'itemprop': 'price'}),
+        ]
 
-        # Try JSON-LD for structured data
+        for tag, attrs in price_selectors:
+            elem = soup.find(tag, attrs)
+            if elem:
+                price_text = elem.get_text()
+                price = self._extract_price(price_text)
+                if price:
+                    product['price'] = price
+                    break
+
+        # 2. Try meta tags
         if not product['price']:
-            json_ld = soup.find('script', {'type': 'application/ld+json'})
-            if json_ld:
-                try:
-                    import json
-                    data = json.loads(json_ld.string)
-                    if isinstance(data, dict) and 'offers' in data:
-                        offers = data['offers']
-                        if isinstance(offers, dict) and 'price' in offers:
-                            product['price'] = float(offers['price'])
-                        elif isinstance(offers, list) and len(offers) > 0:
-                            product['price'] = float(offers[0].get('price', 0))
-                except:
-                    pass
+            meta_selectors = [
+                {'property': 'product:price:amount'},
+                {'property': 'og:price:amount'},
+                {'name': 'product:price:amount'}
+            ]
+            for selector in meta_selectors:
+                price_meta = soup.find('meta', selector)
+                if price_meta and price_meta.get('content'):
+                    try:
+                        product['price'] = float(price_meta['content'].replace(',', '.'))
+                        break
+                    except:
+                        pass
+
+        # 3. Try JSON-LD structured data
+        if not product['price']:
+            try:
+                import json
+                scripts = soup.find_all('script', {'type': 'application/ld+json'})
+                for json_ld in scripts:
+                    try:
+                        data = json.loads(json_ld.string)
+                        # Handle both single object and array
+                        items = [data] if isinstance(data, dict) else data
+                        for item in items:
+                            if isinstance(item, dict) and 'offers' in item:
+                                offers = item['offers']
+                                if isinstance(offers, dict) and 'price' in offers:
+                                    product['price'] = float(offers['price'])
+                                    break
+                                elif isinstance(offers, list) and len(offers) > 0:
+                                    product['price'] = float(offers[0].get('price', 0))
+                                    break
+                        if product['price']:
+                            break
+                    except:
+                        continue
+            except:
+                pass
+
+        # 4. Fallback: search for price patterns in page text
+        if not product['price']:
+            page_text = soup.get_text()
+            # Swiss price patterns
+            patterns = [
+                r"(?:CHF|Fr\.)\s*([0-9]+'[0-9]{3}\.[0-9]{2})",
+                r"(?:CHF|Fr\.)\s*([0-9]+\.[0-9]{2})",
+                r"([0-9]+'[0-9]{3}\.[0-9]{2})\s*(?:CHF|Fr\.)",
+                r"([0-9]+\.[0-9]{2})\s*(?:CHF|Fr\.)"
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, page_text)
+                if match:
+                    price = self._extract_price(match.group(1))
+                    if price and 1 <= price <= 100000:  # Sanity check
+                        product['price'] = price
+                        break
 
         # Image
         img_elem = soup.find('img', {'data-test': 'productImage'}) or \
