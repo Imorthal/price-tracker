@@ -1,9 +1,69 @@
 const API_BASE = '/api';
 
-// Load products on page load
+// Store exchange rates globally
+let exchangeRates = {};
+
+// Load products and exchange rates on page load
 document.addEventListener('DOMContentLoaded', () => {
+    loadExchangeRates();
     loadProducts();
 });
+
+// Load exchange rates
+async function loadExchangeRates() {
+    try {
+        const response = await fetch(`${API_BASE}/exchange-rates`);
+        const data = await response.json();
+
+        exchangeRates = data;
+
+        // Display exchange rates in header
+        const ratesDiv = document.getElementById('exchangeRates');
+        if (ratesDiv) {
+            ratesDiv.innerHTML = `
+                <div class="exchange-rate-item">EUR→CHF: <strong>${(1 / data.EUR).toFixed(3)}</strong></div>
+                <div class="exchange-rate-item">USD→CHF: <strong>${(1 / data.USD).toFixed(3)}</strong></div>
+                <div class="exchange-rate-item">GBP→CHF: <strong>${(1 / data.GBP).toFixed(3)}</strong></div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load exchange rates:', error);
+    }
+}
+
+// Convert price to CHF
+function convertToCHF(price, currency) {
+    if (currency === 'CHF') {
+        return { price: price, converted: false };
+    }
+
+    const rate = exchangeRates[currency];
+    if (!rate) {
+        return { price: price, converted: false, currency: currency };
+    }
+
+    const chfPrice = price / rate;
+    return { price: chfPrice, converted: true, originalPrice: price, originalCurrency: currency };
+}
+
+// Format price with CHF conversion
+function formatPriceWithConversion(price, currency) {
+    if (!price) return 'N/A';
+
+    const conversion = convertToCHF(price, currency);
+
+    if (!conversion.converted) {
+        return `${price.toFixed(2)} ${currency || 'CHF'}`;
+    }
+
+    return `
+        ${conversion.price.toFixed(2)} CHF
+        <span class="price-converted-info">
+            <span class="info-icon" title="Umgerechnet von ${conversion.originalCurrency}">i</span>
+            (${conversion.originalPrice.toFixed(2)} ${conversion.originalCurrency})
+        </span>
+    `;
+}
 
 // Add product
 async function addProduct() {
@@ -69,6 +129,19 @@ async function loadProducts() {
             return;
         }
 
+        // Fetch alerts for all products
+        for (const product of products) {
+            try {
+                const alertResponse = await fetch(`${API_BASE}/products/${product.id}/alerts`);
+                const alerts = await alertResponse.json();
+                // Get the first active alert (there should only be one per product)
+                product.alert = alerts.find(a => a.enabled) || null;
+            } catch (error) {
+                console.error(`Failed to load alerts for product ${product.id}:`, error);
+                product.alert = null;
+            }
+        }
+
         products.forEach(product => {
             const productCard = createProductCard(product);
             containerDiv.appendChild(productCard);
@@ -107,7 +180,7 @@ function createProductCard(product) {
 
             <div class="price-info">
                 <div class="current-price">
-                    ${product.current_price ? `${product.current_price.toFixed(2)} ${product.currency}` : 'N/A'}
+                    ${formatPriceWithConversion(product.current_price, product.currency)}
                 </div>
                 ${priceChangeHTML}
             </div>
@@ -142,7 +215,7 @@ function createProductCard(product) {
                         <div class="source-item">
                             <div class="source-info">
                                 <span class="source-shop">${source.shop_name || 'Unbekannt'}</span>
-                                <span class="source-price">${source.current_price ? source.current_price.toFixed(2) + ' ' + source.currency : 'N/A'}</span>
+                                <span class="source-price">${formatPriceWithConversion(source.current_price, source.currency)}</span>
                             </div>
                             <div class="source-actions">
                                 <a href="${source.url}" target="_blank" class="source-link">→</a>
@@ -152,6 +225,31 @@ function createProductCard(product) {
                     `).join('')}
                 </div>
             ` : ''}
+
+            <div class="price-alert-section ${product.alert ? 'alert-active' : ''}" id="alert-section-${product.id}">
+                <h4>${product.alert ? '🔔 Preis-Alarm aktiv' : '⚠️ Preis-Alarm setzen'}</h4>
+                <div class="alert-input-group">
+                    <input
+                        type="number"
+                        id="alert-input-${product.id}"
+                        class="alert-input"
+                        placeholder="Zielpreis in CHF"
+                        step="0.01"
+                        value="${product.alert ? product.alert.target_price : ''}"
+                    >
+                    <button
+                        onclick="${product.alert ? `removeAlert(${product.alert.id})` : `setAlert(${product.id})`}"
+                        class="btn ${product.alert ? 'btn-danger' : 'btn-primary'}"
+                    >
+                        ${product.alert ? 'Entfernen' : 'Setzen'}
+                    </button>
+                </div>
+                ${product.alert && product.alert.triggered ? `
+                    <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #065f46;">
+                        ✓ Alarm wurde ausgelöst am ${formatDate(product.alert.triggered_at)}
+                    </div>
+                ` : ''}
+            </div>
 
             <div class="product-meta">
                 <span>Zuletzt geprüft: ${formatDate(product.last_checked)}</span>
@@ -419,6 +517,62 @@ async function deleteSource(sourceId) {
             loadProducts();
         } else {
             showMessage(data.error || 'Fehler beim Entfernen', 'error');
+        }
+    } catch (error) {
+        showMessage('Netzwerkfehler: ' + error.message, 'error');
+    }
+}
+
+// Set price alert
+async function setAlert(productId) {
+    const inputElement = document.getElementById(`alert-input-${productId}`);
+    const targetPrice = parseFloat(inputElement.value);
+
+    if (!targetPrice || targetPrice <= 0) {
+        showMessage('Bitte gib einen gültigen Zielpreis ein', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/products/${productId}/alerts`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ target_price: targetPrice }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showMessage('Preis-Alarm erfolgreich gesetzt!', 'success');
+            loadProducts();
+        } else {
+            showMessage(data.error || 'Fehler beim Setzen des Alarms', 'error');
+        }
+    } catch (error) {
+        showMessage('Netzwerkfehler: ' + error.message, 'error');
+    }
+}
+
+// Remove price alert
+async function removeAlert(alertId) {
+    if (!confirm('Möchtest du diesen Preis-Alarm wirklich entfernen?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/alerts/${alertId}`, {
+            method: 'DELETE',
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showMessage('Preis-Alarm entfernt!', 'success');
+            loadProducts();
+        } else {
+            showMessage(data.error || 'Fehler beim Entfernen des Alarms', 'error');
         }
     } catch (error) {
         showMessage('Netzwerkfehler: ' + error.message, 'error');

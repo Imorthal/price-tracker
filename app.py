@@ -9,15 +9,17 @@ from config import Config
 from database import Database
 from scraper import PriceScraper
 from email_notifier import EmailNotifier
+from currency_converter import CurrencyConverter
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
 app.config.from_object(Config)
 
-# Initialize database, scraper, and email notifier
+# Initialize database, scraper, email notifier, and currency converter
 db = Database()
 scraper = PriceScraper()
 email_notifier = EmailNotifier()
+currency_converter = CurrencyConverter()
 
 # Scheduler for automatic price updates
 scheduler = BackgroundScheduler()
@@ -32,6 +34,9 @@ def update_all_prices():
 
     for product in products:
         try:
+            # Track all prices for this product (to find best price for alert)
+            all_prices = []
+
             # Update main product
             product_data = scraper.scrape_product(product['url'])
 
@@ -48,18 +53,21 @@ def update_all_prices():
                 # Add to price history
                 db.add_price_history(product['id'], product_data['price'])
 
-                # Check for price alerts
-                triggered_alerts = db.check_price_alerts(product['id'], None, product_data['price'])
-                for alert in triggered_alerts:
-                    email_notifier.send_price_alert(
-                        product_name=product['name'],
-                        shop_name='Main Source',
-                        current_price=product_data['price'],
-                        target_price=alert['target_price'],
-                        product_url=product['url']
-                    )
+                # Convert to CHF for comparison
+                chf_price = currency_converter.convert_to_chf(
+                    product_data['price'],
+                    product_data.get('currency', 'EUR')
+                )
 
-                print(f"Updated product {product['id']}: {product_data['price']} {product_data.get('currency', 'EUR')}")
+                all_prices.append({
+                    'shop_name': 'Main Source',
+                    'price': product_data['price'],
+                    'currency': product_data.get('currency', 'EUR'),
+                    'chf_price': chf_price,
+                    'url': product['url']
+                })
+
+                print(f"Updated product {product['id']}: {product_data['price']} {product_data.get('currency', 'EUR')} ({chf_price} CHF)")
 
             # Update all sources for this product
             sources = db.get_product_sources(product['id'])
@@ -78,21 +86,53 @@ def update_all_prices():
                         # Add to price history for this source
                         db.add_source_price_history(product['id'], source['id'], source_data['price'])
 
-                        # Check for price alerts on this source
-                        triggered_alerts = db.check_price_alerts(product['id'], source['id'], source_data['price'])
-                        for alert in triggered_alerts:
-                            email_notifier.send_price_alert(
-                                product_name=product['name'],
-                                shop_name=source['shop_name'],
-                                current_price=source_data['price'],
-                                target_price=alert['target_price'],
-                                product_url=source['url']
-                            )
+                        # Convert to CHF for comparison
+                        chf_price = currency_converter.convert_to_chf(
+                            source_data['price'],
+                            source_data.get('currency', source['currency'])
+                        )
 
-                        print(f"  Updated source {source['id']} ({source['shop_name']}): {source_data['price']} {source_data.get('currency', 'EUR')}")
+                        all_prices.append({
+                            'shop_name': source['shop_name'],
+                            'price': source_data['price'],
+                            'currency': source_data.get('currency', source['currency']),
+                            'chf_price': chf_price,
+                            'url': source['url']
+                        })
+
+                        print(f"  Updated source {source['id']} ({source['shop_name']}): {source_data['price']} {source_data.get('currency', 'EUR')} ({chf_price} CHF)")
 
                 except Exception as e:
                     print(f"  Error updating source {source['id']}: {str(e)}")
+
+            # Check for price alerts ONCE per product (not per source)
+            # Only send email if an alert is set
+            alerts = db.get_price_alerts(product_id=product['id'], enabled_only=True)
+
+            if alerts and all_prices:
+                # Find the lowest CHF price among all sources
+                best_price = min(all_prices, key=lambda x: x['chf_price'])
+
+                # Check if any alert should trigger
+                for alert in alerts:
+                    # Convert target price to CHF for comparison
+                    target_chf = alert['target_price']
+
+                    if best_price['chf_price'] <= target_chf:
+                        # Trigger alert!
+                        # Mark as triggered
+                        db.update_price_alert(alert['id'], triggered=1, triggered_at=datetime.now().isoformat())
+
+                        # Send ONE email with the best price
+                        email_notifier.send_price_alert(
+                            product_name=product['name'],
+                            shop_name=best_price['shop_name'],
+                            current_price=best_price['chf_price'],
+                            target_price=target_chf,
+                            product_url=best_price['url']
+                        )
+
+                        print(f"  🔔 Alert triggered! {product['name']} @ {best_price['shop_name']}: {best_price['chf_price']} CHF <= {target_chf} CHF")
 
         except Exception as e:
             print(f"Error updating product {product['id']}: {str(e)}")
@@ -432,6 +472,22 @@ def test_email():
     try:
         email_notifier.test_email_configuration()
         return jsonify({'message': 'Test email sent successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/exchange-rates', methods=['GET'])
+def get_exchange_rates():
+    """Get current exchange rates to CHF"""
+    try:
+        rates = currency_converter.get_exchange_rates()
+        # Return rates relevant for the UI
+        return jsonify({
+            'EUR': rates.get('EUR', 1.0),
+            'USD': rates.get('USD', 1.0),
+            'GBP': rates.get('GBP', 1.0),
+            'updated_at': currency_converter.last_update
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
