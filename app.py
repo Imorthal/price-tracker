@@ -125,16 +125,18 @@ def update_all_prices():
 
                         # Send ONE email with the best price
                         # Use custom recipient if set, otherwise use default from settings
+                        email_recipient = alert['email_recipient'] if 'email_recipient' in alert.keys() else None
+
                         email_notifier.send_price_alert(
                             product_name=product['name'],
                             shop_name=best_price['shop_name'],
                             current_price=best_price['chf_price'],
                             target_price=target_chf,
                             product_url=best_price['url'],
-                            recipient_email=alert.get('email_recipient')
+                            recipient_email=email_recipient
                         )
 
-                        recipient_info = alert.get('email_recipient') or 'default'
+                        recipient_info = email_recipient or 'default'
                         print(f"  🔔 Alert triggered! {product['name']} @ {best_price['shop_name']}: {best_price['chf_price']} CHF <= {target_chf} CHF -> {recipient_info}")
 
         except Exception as e:
@@ -573,7 +575,7 @@ def get_product_alerts(product_id):
             'source_id': alert['source_id'],
             'shop_name': source['shop_name'] if source else 'All Shops',
             'target_price': alert['target_price'],
-            'email_recipient': alert.get('email_recipient'),
+            'email_recipient': alert['email_recipient'] if 'email_recipient' in alert.keys() else None,
             'enabled': bool(alert['enabled']),
             'triggered': bool(alert['triggered']),
             'triggered_at': alert['triggered_at'],
