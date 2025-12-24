@@ -212,24 +212,44 @@ class PriceScraper:
                     break
 
         # Price - multiple approaches for Brack
-        # 1. Try common price selectors
+        # 1. Try common price selectors (most specific first)
         price_selectors = [
-            ('span', {'class': 'price'}),
-            ('div', {'class': 'product-price'}),
+            # Specific Brack selectors
             ('span', {'data-test': 'productPrice'}),
+            ('div', {'data-test': 'productPrice'}),
+            ('span', {'class': 'productPrice'}),
+            ('div', {'class': 'productPrice'}),
+            # Generic price selectors
+            ('span', {'class': 'price'}),
+            ('div', {'class': 'price'}),
+            ('span', {'class': 'product-price'}),
+            ('div', {'class': 'product-price'}),
             ('span', {'class': 'product__price'}),
+            ('div', {'class': 'product__price'}),
             ('div', {'class': 'price-box'}),
             ('span', {'itemprop': 'price'}),
+            ('meta', {'itemprop': 'price'}),
+            # Data attributes
+            ('div', {'data-price': True}),
+            ('span', {'data-price': True}),
         ]
 
         for tag, attrs in price_selectors:
             elem = soup.find(tag, attrs)
             if elem:
-                price_text = elem.get_text()
-                price = self._extract_price(price_text)
-                if price:
-                    product['price'] = price
-                    break
+                if tag == 'meta':
+                    price_text = elem.get('content', '')
+                elif 'data-price' in attrs:
+                    # Try data attribute first
+                    price_text = elem.get('data-price', '') or elem.get_text()
+                else:
+                    price_text = elem.get_text()
+
+                if price_text:
+                    price = self._extract_price(price_text)
+                    if price and 0.01 <= price <= 1000000:
+                        product['price'] = price
+                        break
 
         # 2. Try meta tags
         if not product['price']:
@@ -264,23 +284,47 @@ class PriceScraper:
             except:
                 pass
 
-        # 4. Fallback: search for price patterns in page text
+        # 4. Scan all elements for price-like content
+        if not product['price']:
+            # Find all elements with numbers that look like prices
+            all_text_elements = soup.find_all(text=re.compile(r'\d+[\.,]\d{2}'))
+
+            for text_elem in all_text_elements:
+                text = text_elem.strip()
+                # Skip if it's in a script or style tag
+                if text_elem.parent.name in ['script', 'style']:
+                    continue
+
+                # Look for CHF prices
+                if re.search(r'(?:CHF|Fr\.)', text, re.IGNORECASE):
+                    price = self._extract_price(text)
+                    if price and 10 <= price <= 100000:  # Reasonable price range
+                        product['price'] = price
+                        break
+
+        # 5. Fallback: search for price patterns in page text
         if not product['price']:
             page_text = soup.get_text()
             # Swiss price patterns (CHF with apostrophe thousands separator)
             patterns = [
                 r"(?:CHF|Fr\.)\s*([0-9]+'[0-9]{3}\.[0-9]{2})",
+                r"(?:CHF|Fr\.)\s*([0-9]+'[0-9]{3},\d{2})",
                 r"(?:CHF|Fr\.)\s*([0-9]+\.[0-9]{2})",
+                r"(?:CHF|Fr\.)\s*([0-9]+,\d{2})",
                 r"([0-9]+'[0-9]{3}\.[0-9]{2})\s*(?:CHF|Fr\.)",
-                r"([0-9]+\.[0-9]{2})\s*(?:CHF|Fr\.)"
+                r"([0-9]+'[0-9]{3},\d{2})\s*(?:CHF|Fr\.)",
+                r"([0-9]+\.[0-9]{2})\s*(?:CHF|Fr\.)",
+                r"([0-9]+,\d{2})\s*(?:CHF|Fr\.)",
             ]
             for pattern in patterns:
-                match = re.search(pattern, page_text)
-                if match:
-                    price = self._extract_price(match.group(1))
-                    if price and 1 <= price <= 100000:  # Sanity check
+                matches = re.findall(pattern, page_text)
+                for match in matches:
+                    price = self._extract_price(match)
+                    if price and 10 <= price <= 100000:  # Sanity check for reasonable price
                         product['price'] = price
                         break
+                if product['price']:
+                    break
 
         # Image
         img_elem = soup.find('img', {'class': 'product-image'}) or \
