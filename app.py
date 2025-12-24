@@ -70,6 +70,18 @@ def index():
     return send_from_directory('static', 'index.html')
 
 
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files (CSS, JS, images)"""
+    # Only serve files that don't start with 'api'
+    if not filename.startswith('api'):
+        try:
+            return send_from_directory('static', filename)
+        except:
+            pass
+    return "Not found", 404
+
+
 @app.route('/api/products', methods=['GET'])
 def get_products():
     """Get all products"""
