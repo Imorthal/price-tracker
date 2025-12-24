@@ -25,15 +25,19 @@ class CurrencyConverter:
 
         # Fetch new rates
         try:
-            # Get rates with CHF as base
-            response = requests.get(self.api_url.format(self.base_currency), timeout=5)
+            # Get rates with EUR as base (more reliable), then convert to CHF base
+            response = requests.get(self.api_url.format('EUR'), timeout=5)
             response.raise_for_status()
             data = response.json()
 
+            # From EUR base, get CHF rate (1 EUR = X CHF)
+            eur_to_chf = data['rates'].get('CHF', 0.93)  # How many CHF for 1 EUR
+
+            # Now calculate rates for converting TO CHF
             rates = {
-                'EUR': 1 / data['rates']['EUR'] if 'EUR' in data['rates'] else 0,
-                'USD': 1 / data['rates']['USD'] if 'USD' in data['rates'] else 0,
-                'GBP': 1 / data['rates']['GBP'] if 'GBP' in data['rates'] else 0,
+                'EUR': eur_to_chf,  # 1 EUR = X CHF (currently ~0.93)
+                'USD': data['rates'].get('CHF', 0.93) / data['rates'].get('USD', 1.0) if 'USD' in data['rates'] else 0.84,
+                'GBP': data['rates'].get('CHF', 0.93) / data['rates'].get('GBP', 1.0) if 'GBP' in data['rates'] else 1.11,
                 'CHF': 1.0,
                 'timestamp': datetime.now().isoformat()
             }
@@ -46,11 +50,11 @@ class CurrencyConverter:
 
         except Exception as e:
             print(f"Error fetching exchange rates: {str(e)}")
-            # Return fallback rates
+            # Return fallback rates (correct values: EUR is weaker than CHF)
             fallback = {
-                'EUR': 0.93,  # Approximate fallback
-                'USD': 0.84,
-                'GBP': 1.08,
+                'EUR': 0.93,  # 1 EUR = 0.93 CHF (EUR is cheaper than CHF)
+                'USD': 0.84,  # 1 USD = 0.84 CHF
+                'GBP': 1.11,  # 1 GBP = 1.11 CHF (GBP is stronger than CHF)
                 'CHF': 1.0,
                 'timestamp': datetime.now().isoformat()
             }

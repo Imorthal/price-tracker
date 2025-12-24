@@ -21,9 +21,9 @@ async function loadExchangeRates() {
         const ratesDiv = document.getElementById('exchangeRates');
         if (ratesDiv) {
             ratesDiv.innerHTML = `
-                <div class="exchange-rate-item">EUR→CHF: <strong>${(1 / data.EUR).toFixed(3)}</strong></div>
-                <div class="exchange-rate-item">USD→CHF: <strong>${(1 / data.USD).toFixed(3)}</strong></div>
-                <div class="exchange-rate-item">GBP→CHF: <strong>${(1 / data.GBP).toFixed(3)}</strong></div>
+                <div class="exchange-rate-item">1 EUR = <strong>${data.EUR.toFixed(3)} CHF</strong></div>
+                <div class="exchange-rate-item">1 USD = <strong>${data.USD.toFixed(3)} CHF</strong></div>
+                <div class="exchange-rate-item">1 GBP = <strong>${data.GBP.toFixed(3)} CHF</strong></div>
             `;
         }
     } catch (error) {
@@ -42,7 +42,9 @@ function convertToCHF(price, currency) {
         return { price: price, converted: false, currency: currency };
     }
 
-    const chfPrice = price / rate;
+    // Rate is now "how many CHF for 1 of currency"
+    // So: price * rate = CHF
+    const chfPrice = price * rate;
     return { price: chfPrice, converted: true, originalPrice: price, originalCurrency: currency };
 }
 
