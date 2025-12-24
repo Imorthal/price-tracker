@@ -254,11 +254,20 @@ function createProductCard(product) {
                 <div class="alert-input-group">
                     <input
                         type="number"
-                        id="alert-input-${product.id}"
+                        id="alert-price-${product.id}"
                         class="alert-input"
                         placeholder="Zielpreis in CHF"
                         step="0.01"
                         value="${product.alert ? product.alert.target_price : ''}"
+                        ${product.alert ? 'disabled' : ''}
+                    >
+                    <input
+                        type="email"
+                        id="alert-email-${product.id}"
+                        class="alert-input"
+                        placeholder="E-Mail (leer = Standard)"
+                        value="${product.alert && product.alert.email_recipient ? product.alert.email_recipient : ''}"
+                        ${product.alert ? 'disabled' : ''}
                     >
                     <button
                         onclick="${product.alert ? `removeAlert(${product.alert.id})` : `setAlert(${product.id})`}"
@@ -270,6 +279,7 @@ function createProductCard(product) {
                 ${product.alert ? `
                     <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #065f46;">
                         ${product.alert.triggered ? `✓ Alarm wurde ausgelöst am ${formatDate(product.alert.triggered_at)}` : `Zielpreis: <strong>${product.alert.target_price.toFixed(2)} CHF</strong> - Aktuell bester Preis: <strong>${product.lowest_price ? product.lowest_price.toFixed(2) + ' CHF' : 'N/A'}</strong>`}
+                        ${product.alert.email_recipient ? `<br>📧 Empfänger: ${product.alert.email_recipient}` : '<br>📧 Empfänger: Standard-Adresse'}
                     </div>
                 ` : ''}
             </div>
@@ -548,21 +558,35 @@ async function deleteSource(sourceId) {
 
 // Set price alert
 async function setAlert(productId) {
-    const inputElement = document.getElementById(`alert-input-${productId}`);
-    const targetPrice = parseFloat(inputElement.value);
+    const priceInputElement = document.getElementById(`alert-price-${productId}`);
+    const emailInputElement = document.getElementById(`alert-email-${productId}`);
+
+    const targetPrice = parseFloat(priceInputElement.value);
+    const emailRecipient = emailInputElement.value.trim();
 
     if (!targetPrice || targetPrice <= 0) {
         showMessage('Bitte gib einen gültigen Zielpreis ein', 'error');
         return;
     }
 
+    // Validate email if provided
+    if (emailRecipient && !isValidEmail(emailRecipient)) {
+        showMessage('Bitte gib eine gültige E-Mail-Adresse ein', 'error');
+        return;
+    }
+
     try {
+        const payload = { target_price: targetPrice };
+        if (emailRecipient) {
+            payload.email_recipient = emailRecipient;
+        }
+
         const response = await fetch(`${API_BASE}/products/${productId}/alerts`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ target_price: targetPrice }),
+            body: JSON.stringify(payload),
         });
 
         const data = await response.json();
@@ -576,6 +600,12 @@ async function setAlert(productId) {
     } catch (error) {
         showMessage('Netzwerkfehler: ' + error.message, 'error');
     }
+}
+
+// Simple email validation
+function isValidEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
 }
 
 // Remove price alert

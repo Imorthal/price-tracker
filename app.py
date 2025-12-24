@@ -124,15 +124,18 @@ def update_all_prices():
                         db.update_price_alert(alert['id'], triggered=1, triggered_at=datetime.now().isoformat())
 
                         # Send ONE email with the best price
+                        # Use custom recipient if set, otherwise use default from settings
                         email_notifier.send_price_alert(
                             product_name=product['name'],
                             shop_name=best_price['shop_name'],
                             current_price=best_price['chf_price'],
                             target_price=target_chf,
-                            product_url=best_price['url']
+                            product_url=best_price['url'],
+                            recipient_email=alert.get('email_recipient')
                         )
 
-                        print(f"  🔔 Alert triggered! {product['name']} @ {best_price['shop_name']}: {best_price['chf_price']} CHF <= {target_chf} CHF")
+                        recipient_info = alert.get('email_recipient') or 'default'
+                        print(f"  🔔 Alert triggered! {product['name']} @ {best_price['shop_name']}: {best_price['chf_price']} CHF <= {target_chf} CHF -> {recipient_info}")
 
         except Exception as e:
             print(f"Error updating product {product['id']}: {str(e)}")
@@ -570,6 +573,7 @@ def get_product_alerts(product_id):
             'source_id': alert['source_id'],
             'shop_name': source['shop_name'] if source else 'All Shops',
             'target_price': alert['target_price'],
+            'email_recipient': alert.get('email_recipient'),
             'enabled': bool(alert['enabled']),
             'triggered': bool(alert['triggered']),
             'triggered_at': alert['triggered_at'],
@@ -594,8 +598,9 @@ def create_price_alert(product_id):
     try:
         target_price = float(data['target_price'])
         source_id = data.get('source_id')  # Optional
+        email_recipient = data.get('email_recipient')  # Optional, uses default if not provided
 
-        alert_id = db.add_price_alert(product_id, target_price, source_id)
+        alert_id = db.add_price_alert(product_id, target_price, source_id, email_recipient)
 
         return jsonify({
             'id': alert_id,

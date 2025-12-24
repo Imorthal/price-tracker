@@ -115,6 +115,15 @@ class Database:
                 )
             ''')
 
+            # Migration: Add email_recipient column to price_alerts if it doesn't exist
+            try:
+                cursor.execute('''
+                    ALTER TABLE price_alerts ADD COLUMN email_recipient TEXT
+                ''')
+            except sqlite3.OperationalError:
+                # Column already exists
+                pass
+
             # Initialize default settings
             default_settings = [
                 ('scrape_interval_minutes', '60'),
@@ -319,14 +328,14 @@ class Database:
             ''', (key, value))
 
     # Price alerts methods
-    def add_price_alert(self, product_id, target_price, source_id=None):
+    def add_price_alert(self, product_id, target_price, source_id=None, email_recipient=None):
         """Add a price alert"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO price_alerts (product_id, source_id, target_price)
-                VALUES (?, ?, ?)
-            ''', (product_id, source_id, target_price))
+                INSERT INTO price_alerts (product_id, source_id, target_price, email_recipient)
+                VALUES (?, ?, ?, ?)
+            ''', (product_id, source_id, target_price, email_recipient))
             return cursor.lastrowid
 
     def get_price_alerts(self, product_id=None, enabled_only=True):
