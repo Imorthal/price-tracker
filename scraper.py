@@ -37,6 +37,10 @@ class PriceScraper:
                 return self._scrape_amazon(soup, url)
             elif 'ebay' in domain:
                 return self._scrape_ebay(soup, url)
+            elif 'brack.ch' in domain:
+                return self._scrape_brack(soup, url)
+            elif 'digitec.ch' in domain:
+                return self._scrape_digitec(soup, url)
             else:
                 # Generic scraping
                 return self._scrape_generic(soup, url)
@@ -159,21 +163,142 @@ class PriceScraper:
 
         return product
 
+    def _scrape_brack(self, soup, url):
+        """Scrape Brack.ch product page"""
+        product = {
+            'url': url,
+            'name': None,
+            'price': None,
+            'currency': 'CHF',
+            'image_url': None
+        }
+
+        # Product name
+        title_elem = soup.find('h1', {'class': 'product-name'}) or \
+                     soup.find('h1', {'data-test': 'productName'}) or \
+                     soup.find('h1')
+        if title_elem:
+            product['name'] = title_elem.get_text().strip()
+
+        # Price - Brack uses various price containers
+        price_elem = soup.find('span', {'class': 'price'}) or \
+                     soup.find('div', {'class': 'product-price'}) or \
+                     soup.find('span', {'data-test': 'productPrice'})
+
+        if price_elem:
+            price_text = price_elem.get_text()
+            price = self._extract_price(price_text)
+            if price:
+                product['price'] = price
+
+        # If no price found, try to find it in meta tags
+        if not product['price']:
+            price_meta = soup.find('meta', {'property': 'product:price:amount'}) or \
+                        soup.find('meta', {'property': 'og:price:amount'})
+            if price_meta and price_meta.get('content'):
+                try:
+                    product['price'] = float(price_meta['content'])
+                except:
+                    pass
+
+        # Image
+        img_elem = soup.find('img', {'class': 'product-image'}) or \
+                   soup.find('img', {'data-test': 'productImage'}) or \
+                   soup.find('meta', {'property': 'og:image'})
+
+        if img_elem:
+            if img_elem.name == 'meta':
+                product['image_url'] = img_elem.get('content')
+            else:
+                product['image_url'] = img_elem.get('src') or img_elem.get('data-src')
+
+        return product
+
+    def _scrape_digitec(self, soup, url):
+        """Scrape Digitec.ch product page"""
+        product = {
+            'url': url,
+            'name': None,
+            'price': None,
+            'currency': 'CHF',
+            'image_url': None
+        }
+
+        # Product name
+        title_elem = soup.find('h1', {'class': 'productTitle'}) or \
+                     soup.find('h1', {'data-test': 'productName'}) or \
+                     soup.find('strong', {'data-test': 'productName'}) or \
+                     soup.find('h1')
+        if title_elem:
+            product['name'] = title_elem.get_text().strip()
+
+        # Price - Digitec structure
+        price_elem = soup.find('strong', {'data-test': 'productPrice'}) or \
+                     soup.find('span', {'class': 'price'}) or \
+                     soup.find('div', {'class': 'product-price'})
+
+        if price_elem:
+            price_text = price_elem.get_text()
+            price = self._extract_price(price_text)
+            if price:
+                product['price'] = price
+
+        # Try JSON-LD for structured data
+        if not product['price']:
+            json_ld = soup.find('script', {'type': 'application/ld+json'})
+            if json_ld:
+                try:
+                    import json
+                    data = json.loads(json_ld.string)
+                    if isinstance(data, dict) and 'offers' in data:
+                        offers = data['offers']
+                        if isinstance(offers, dict) and 'price' in offers:
+                            product['price'] = float(offers['price'])
+                        elif isinstance(offers, list) and len(offers) > 0:
+                            product['price'] = float(offers[0].get('price', 0))
+                except:
+                    pass
+
+        # Image
+        img_elem = soup.find('img', {'data-test': 'productImage'}) or \
+                   soup.find('picture', {'class': 'product-image'}) or \
+                   soup.find('meta', {'property': 'og:image'})
+
+        if img_elem:
+            if img_elem.name == 'meta':
+                product['image_url'] = img_elem.get('content')
+            elif img_elem.name == 'picture':
+                img_tag = img_elem.find('img')
+                if img_tag:
+                    product['image_url'] = img_tag.get('src') or img_tag.get('data-src')
+            else:
+                product['image_url'] = img_elem.get('src') or img_elem.get('data-src')
+
+        return product
+
     def _extract_price(self, price_text):
         """Extract numeric price from text"""
         if not price_text:
             return None
 
-        # Remove currency symbols and text
-        price_text = re.sub(r'[^\d.,]', '', price_text)
+        # Remove currency symbols (€, CHF, EUR, etc.) and whitespace
+        price_text = re.sub(r'[€$£CHF]|EUR|USD|GBP', '', price_text).strip()
 
-        # Replace comma with dot for decimal
-        price_text = price_text.replace(',', '.')
+        # Remove all non-numeric characters except dots, commas, and apostrophes (Swiss format)
+        price_text = re.sub(r"[^\d.,']", '', price_text)
 
-        # Remove all dots except the last one (for thousands separator)
-        parts = price_text.split('.')
-        if len(parts) > 2:
-            price_text = ''.join(parts[:-1]) + '.' + parts[-1]
+        # Handle Swiss format (e.g., 1'234.56 or 1'234,56)
+        price_text = price_text.replace("'", '')
+
+        # Determine decimal separator
+        # If there's a comma followed by 2 digits at the end, it's decimal
+        # Otherwise, comma is thousands separator
+        if re.search(r',\d{2}$', price_text):
+            # Comma is decimal separator (European format)
+            price_text = price_text.replace('.', '').replace(',', '.')
+        else:
+            # Dot is decimal separator or comma is thousands
+            price_text = price_text.replace(',', '')
 
         try:
             return float(price_text)

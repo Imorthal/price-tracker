@@ -30,6 +30,7 @@ def update_all_prices():
 
     for product in products:
         try:
+            # Update main product
             product_data = scraper.scrape_product(product['url'])
 
             if product_data and product_data['price']:
@@ -45,7 +46,29 @@ def update_all_prices():
                 # Add to price history
                 db.add_price_history(product['id'], product_data['price'])
 
-                print(f"Updated product {product['id']}: {product_data['price']} EUR")
+                print(f"Updated product {product['id']}: {product_data['price']} {product_data.get('currency', 'EUR')}")
+
+            # Update all sources for this product
+            sources = db.get_product_sources(product['id'])
+            for source in sources:
+                try:
+                    source_data = scraper.scrape_product(source['url'])
+
+                    if source_data and source_data['price']:
+                        db.update_source(
+                            source['id'],
+                            current_price=source_data['price'],
+                            currency=source_data.get('currency', source['currency']),
+                            last_checked=datetime.now().isoformat()
+                        )
+
+                        # Add to price history for this source
+                        db.add_source_price_history(product['id'], source['id'], source_data['price'])
+
+                        print(f"  Updated source {source['id']} ({source['shop_name']}): {source_data['price']} {source_data.get('currency', 'EUR')}")
+
+                except Exception as e:
+                    print(f"  Error updating source {source['id']}: {str(e)}")
 
         except Exception as e:
             print(f"Error updating product {product['id']}: {str(e)}")
@@ -91,6 +114,24 @@ def get_products():
     for product in products:
         price_history = db.get_price_history(product['id'], limit=30)
 
+        # Get all sources for this product
+        sources = db.get_product_sources(product['id'])
+        sources_list = []
+        for source in sources:
+            source_history = db.get_source_price_history(source['id'], limit=30)
+            sources_list.append({
+                'id': source['id'],
+                'url': source['url'],
+                'shop_name': source['shop_name'],
+                'current_price': source['current_price'],
+                'currency': source['currency'],
+                'last_checked': source['last_checked'],
+                'price_history': [
+                    {'price': p['price'], 'timestamp': p['timestamp']}
+                    for p in source_history
+                ]
+            })
+
         products_list.append({
             'id': product['id'],
             'url': product['url'],
@@ -105,7 +146,8 @@ def get_products():
             'price_history': [
                 {'price': p['price'], 'timestamp': p['timestamp']}
                 for p in price_history
-            ]
+            ],
+            'sources': sources_list
         })
 
     return jsonify(products_list)
@@ -232,6 +274,105 @@ def trigger_update_all():
     try:
         update_all_prices()
         return jsonify({'message': 'All products updated successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/products/<int:product_id>/sources', methods=['GET'])
+def get_product_sources(product_id):
+    """Get all sources for a product"""
+    product = db.get_product(product_id)
+
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+
+    sources = db.get_product_sources(product_id)
+
+    sources_list = []
+    for source in sources:
+        price_history = db.get_source_price_history(source['id'], limit=30)
+        sources_list.append({
+            'id': source['id'],
+            'url': source['url'],
+            'shop_name': source['shop_name'],
+            'current_price': source['current_price'],
+            'currency': source['currency'],
+            'last_checked': source['last_checked'],
+            'price_history': [
+                {'price': p['price'], 'timestamp': p['timestamp']}
+                for p in price_history
+            ]
+        })
+
+    return jsonify(sources_list)
+
+
+@app.route('/api/products/<int:product_id>/sources', methods=['POST'])
+def add_product_source(product_id):
+    """Add a new source URL to an existing product"""
+    product = db.get_product(product_id)
+
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+
+    data = request.json
+    if not data or 'url' not in data:
+        return jsonify({'error': 'URL is required'}), 400
+
+    url = data['url']
+
+    # Check if this URL already exists as a source
+    existing_source = db.get_source_by_url(url)
+    if existing_source:
+        return jsonify({'error': 'This URL is already tracked'}), 409
+
+    try:
+        # Scrape the new source
+        product_data = scraper.scrape_product(url)
+
+        if not product_data:
+            return jsonify({'error': 'Could not scrape product data'}), 400
+
+        # Extract shop name from URL
+        from urllib.parse import urlparse
+        domain = urlparse(url).netloc.lower()
+        shop_name = domain.replace('www.', '').split('.')[0].capitalize()
+
+        # Add source to database
+        source_id = db.add_product_source(
+            product_id=product_id,
+            url=url,
+            shop_name=shop_name
+        )
+
+        # Update source with scraped data
+        if product_data['price']:
+            db.update_source(
+                source_id,
+                current_price=product_data['price'],
+                currency=product_data.get('currency', 'EUR'),
+                last_checked=datetime.now().isoformat()
+            )
+
+            # Add initial price to history
+            db.add_source_price_history(product_id, source_id, product_data['price'])
+
+        return jsonify({
+            'id': source_id,
+            'message': 'Source added successfully',
+            'source': product_data
+        }), 201
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sources/<int:source_id>', methods=['DELETE'])
+def delete_product_source(source_id):
+    """Delete a product source"""
+    try:
+        db.delete_source(source_id)
+        return jsonify({'message': 'Source deleted successfully'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

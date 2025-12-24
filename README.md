@@ -4,12 +4,14 @@ Ein moderner Web-basierter Price Tracker zum Überwachen von Produktpreisen aus 
 
 ## Features
 
-- **Automatisches Preis-Scraping**: Unterstützt Amazon, eBay und viele weitere Shops
-- **Preisverlauf**: Visualisierung der Preisentwicklung über die Zeit
-- **Automatische Updates**: Konfigurierbare automatische Preisüberprüfung
+- **Automatisches Preis-Scraping**: Unterstützt Amazon, eBay, Brack, Digitec und viele weitere Shops
+- **Multi-Shop-Vergleich**: Verfolge dasselbe Produkt bei mehreren Anbietern gleichzeitig
+- **Preisverlauf**: Visualisierung der Preisentwicklung über die Zeit pro Shop
+- **Automatische Updates**: Konfigurierbare automatische Preisüberprüfung für alle Quellen
 - **Responsives Design**: Funktioniert auf Desktop und Mobile
 - **Einfache Bedienung**: Intuitive Web-Oberfläche
 - **Statistiken**: Übersicht über potentielle Ersparnisse und Durchschnittspreise
+- **Flexible Produktgruppierung**: Füge manuell weitere Shops zu einem Produkt hinzu
 
 ## Installation
 
@@ -56,9 +58,20 @@ Der Server läuft standardmäßig auf `http://localhost:5000`
 ### Web-Interface nutzen
 
 1. Öffne `http://localhost:5000` im Browser
-2. Gib eine Produkt-URL ein (z.B. von Amazon oder eBay)
+2. Gib eine Produkt-URL ein (z.B. von Amazon, eBay, Brack oder Digitec)
 3. Klicke auf "Produkt hinzufügen"
 4. Der Tracker wird automatisch den aktuellen Preis abrufen und speichern
+
+### Multi-Shop-Vergleich
+
+Um dasselbe Produkt bei verschiedenen Shops zu vergleichen:
+
+1. Füge zunächst eine URL des Produkts hinzu (z.B. von Amazon)
+2. Klicke auf "+ Shop" bei dem Produkt
+3. Gib die URL desselben Produkts von einem anderen Shop ein (z.B. Brack oder Digitec)
+4. Das System zeigt nun beide Preise nebeneinander an und verfolgt sie separat
+
+**Tipp**: Die App erkennt automatisch den Shop (Amazon, Brack, Digitec, etc.) und nutzt optimierte Scraper.
 
 ### Automatische Updates
 
@@ -93,7 +106,7 @@ PRICE_DROP_THRESHOLD=5.0
 ## API Endpunkte
 
 ### GET /api/products
-Alle getrackte Produkte abrufen
+Alle getrackte Produkte abrufen (inkl. aller Sources)
 
 ### POST /api/products
 Neues Produkt hinzufügen
@@ -112,8 +125,22 @@ Produkt manuell aktualisieren
 ### GET /api/products/{id}/history
 Preisverlauf für ein Produkt abrufen
 
+### GET /api/products/{id}/sources
+Alle Sources (Shop-URLs) für ein Produkt abrufen
+
+### POST /api/products/{id}/sources
+Neue Source zu einem Produkt hinzufügen
+```json
+{
+  "url": "https://www.brack.ch/..."
+}
+```
+
+### DELETE /api/sources/{id}
+Eine Source löschen
+
 ### POST /api/update-all
-Alle Produkte manuell aktualisieren
+Alle Produkte und Sources manuell aktualisieren
 
 ## Projektstruktur
 
@@ -133,11 +160,17 @@ price-tracker/
 
 ## Unterstützte Shops
 
-- Amazon (alle Länder)
-- eBay (alle Länder)
-- Generisches Scraping für andere Shops
+### Mit optimierten Scrapern:
+- **Amazon** (alle Länder) - .de, .com, .co.uk, etc.
+- **eBay** (alle Länder)
+- **Brack.ch** (Schweiz) - Optimiert für Brack
+- **Digitec.ch** (Schweiz) - Optimiert für Digitec/Galaxus
 
-**Hinweis**: Einige Shops haben Anti-Scraping-Maßnahmen. Die Erfolgsrate kann variieren.
+### Generisches Scraping:
+- Die meisten anderen Online-Shops werden durch generisches Scraping unterstützt
+- Erfolgsrate kann variieren je nach Website-Struktur
+
+**Hinweis**: Einige Shops haben Anti-Scraping-Maßnahmen. Die Erfolgsrate kann variieren. Bei Problemen nutze einen längeren Scraping-Intervall.
 
 ## Technologie-Stack
 
@@ -188,9 +221,14 @@ Bei Problemen oder Fragen bitte ein Issue im GitHub Repository erstellen.
 
 ## Roadmap
 
+- [x] Multi-Shop-Vergleich (Mehrere URLs pro Produkt)
+- [x] Unterstützung für Brack.ch und Digitec.ch
+- [x] Verbesserte Preisextraktion (Schweizer Format mit ')
 - [ ] E-Mail Benachrichtigungen bei Preisänderungen
-- [ ] Preis-Alerts mit individuellen Schwellenwerten
+- [ ] Preis-Alerts mit individuellen Schwellenwerten pro Shop
 - [ ] Export von Preisverläufen (CSV, JSON)
-- [ ] Unterstützung für weitere Shops
+- [ ] Automatische Produkterkennung (gleiche Produkte automatisch verknüpfen)
+- [ ] Unterstützung für weitere Shops (MediaMarkt, Otto, etc.)
 - [ ] Mobile App
 - [ ] Multi-User Support mit Authentifizierung
+- [ ] Preisvergleichs-Dashboard mit Best-Price-Anzeige

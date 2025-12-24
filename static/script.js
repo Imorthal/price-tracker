@@ -135,6 +135,24 @@ function createProductCard(product) {
                 </div>
             `}
 
+            ${product.sources && product.sources.length > 0 ? `
+                <div class="product-sources">
+                    <h4 class="sources-title">Andere Shops (${product.sources.length})</h4>
+                    ${product.sources.map(source => `
+                        <div class="source-item">
+                            <div class="source-info">
+                                <span class="source-shop">${source.shop_name || 'Unbekannt'}</span>
+                                <span class="source-price">${source.current_price ? source.current_price.toFixed(2) + ' ' + source.currency : 'N/A'}</span>
+                            </div>
+                            <div class="source-actions">
+                                <a href="${source.url}" target="_blank" class="source-link">→</a>
+                                <button onclick="deleteSource(${source.id})" class="btn-source-delete">×</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+
             <div class="product-meta">
                 <span>Zuletzt geprüft: ${formatDate(product.last_checked)}</span>
             </div>
@@ -142,6 +160,9 @@ function createProductCard(product) {
             <div class="product-actions">
                 <button onclick="refreshProduct(${product.id})" class="btn btn-refresh">
                     Aktualisieren
+                </button>
+                <button onclick="showAddSourceDialog(${product.id}, '${escapeHtml(product.name)}')" class="btn btn-secondary">
+                    + Shop
                 </button>
                 <button onclick="deleteProduct(${product.id})" class="btn btn-danger">
                     Löschen
@@ -329,6 +350,79 @@ function formatDate(dateString) {
     if (diffDays < 7) return `vor ${diffDays} Tag(en)`;
 
     return date.toLocaleDateString('de-DE');
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Show dialog to add a new source to a product
+function showAddSourceDialog(productId, productName) {
+    const url = prompt(`Neue Shop-URL für "${productName}" hinzufügen:`);
+
+    if (!url) return;
+
+    // Validate URL
+    try {
+        new URL(url);
+    } catch (e) {
+        showMessage('Bitte gib eine gültige URL ein', 'error');
+        return;
+    }
+
+    addSource(productId, url);
+}
+
+// Add a new source to a product
+async function addSource(productId, url) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${productId}/sources`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showMessage('Shop erfolgreich hinzugefügt!', 'success');
+            loadProducts();
+        } else {
+            showMessage(data.error || 'Fehler beim Hinzufügen des Shops', 'error');
+        }
+    } catch (error) {
+        showMessage('Netzwerkfehler: ' + error.message, 'error');
+    }
+}
+
+// Delete a source
+async function deleteSource(sourceId) {
+    if (!confirm('Möchtest du diesen Shop wirklich entfernen?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/sources/${sourceId}`, {
+            method: 'DELETE',
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showMessage('Shop entfernt!', 'success');
+            loadProducts();
+        } else {
+            showMessage(data.error || 'Fehler beim Entfernen', 'error');
+        }
+    } catch (error) {
+        showMessage('Netzwerkfehler: ' + error.message, 'error');
+    }
 }
 
 // Allow Enter key to add product
