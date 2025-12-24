@@ -207,48 +207,57 @@ function createProductCard(product) {
             ` : ''}
 
             ${product.price_history && product.price_history.length > 1 ? `
-                <div class="chart-container">
-                    ${createMiniChart(product.price_history)}
+                <div class="collapsible-section">
+                    <div class="collapsible-header" onclick="toggleCollapsible('chart-${product.id}')">
+                        <h4>📊 Preisverlauf (${product.price_history.length} Einträge)</h4>
+                        <span class="collapsible-toggle" id="toggle-chart-${product.id}">▼</span>
+                    </div>
+                    <div class="collapsible-content" id="chart-${product.id}">
+                        <div class="chart-container">
+                            ${createMiniChart(product.price_history)}
+                        </div>
+                    </div>
                 </div>
-            ` : `
-                <div class="chart-container">
-                    <div class="chart-placeholder">Noch nicht genug Daten für Preisverlauf</div>
-                </div>
-            `}
+            ` : ''}
 
             ${product.sources && product.sources.length > 0 ? `
-                <div class="product-sources">
-                    <h4 class="sources-title">Andere Shops (${product.sources.length})</h4>
-                    ${product.sources.map(source => `
-                        <div class="source-item">
-                            <div class="source-info">
-                                <span class="source-shop">${source.shop_name || 'Unbekannt'}</span>
-                                <span class="source-price">
-                                    ${source.current_price_chf ? `${source.current_price_chf.toFixed(2)} CHF` : 'N/A'}
-                                    ${source.currency !== 'CHF' && source.current_price ? `
-                                        <span class="price-converted-info" style="font-size: 0.75rem;">
-                                            <span class="info-icon" title="Umgerechnet von ${source.currency}">i</span>
-                                            (${source.current_price.toFixed(2)} ${source.currency})
+                <div class="collapsible-section">
+                    <div class="collapsible-header" onclick="toggleCollapsible('sources-${product.id}')">
+                        <h4>🛒 Andere Shops (${product.sources.length})</h4>
+                        <span class="collapsible-toggle" id="toggle-sources-${product.id}">▼</span>
+                    </div>
+                    <div class="collapsible-content" id="sources-${product.id}">
+                        <div class="product-sources">
+                            ${product.sources.map(source => `
+                                <div class="source-item">
+                                    <div class="source-info">
+                                        <span class="source-shop">${source.shop_name || 'Unbekannt'}</span>
+                                        <span class="source-price">
+                                            ${source.current_price_chf ? `${source.current_price_chf.toFixed(2)} CHF` : 'N/A'}
+                                            ${source.currency !== 'CHF' && source.current_price ? `
+                                                <span class="price-converted-info" style="font-size: 0.75rem;">
+                                                    <span class="info-icon" title="Umgerechnet von ${source.currency}">i</span>
+                                                    (${source.current_price.toFixed(2)} ${source.currency})
+                                                </span>
+                                            ` : ''}
                                         </span>
-                                    ` : ''}
-                                </span>
-                            </div>
-                            <div class="source-actions">
-                                <a href="${source.url}" target="_blank" class="source-link">→</a>
-                                <button onclick="deleteSource(${source.id})" class="btn-source-delete">×</button>
-                            </div>
+                                    </div>
+                                    <div class="source-actions">
+                                        <a href="${source.url}" target="_blank" class="source-link">→</a>
+                                        <button onclick="deleteSource(${source.id})" class="btn-source-delete">×</button>
+                                    </div>
+                                </div>
+                            `).join('')}
                         </div>
-                    `).join('')}
+                    </div>
                 </div>
             ` : ''}
 
             <div class="price-alert-section ${product.alert ? 'alert-active' : ''}" id="alert-section-${product.id}">
-                <h4>${product.alert ? '🔔 Preis-Alarm aktiv' : '⚠️ Preis-Alarm setzen'}</h4>
+                <h4>${product.alert ? '🔔 Preis-Alarm aktiv' : '⚠️ Preis-Alarm'}</h4>
                 ${!product.alert ? `
-                    <div style="font-size: 0.85rem; margin-bottom: 0.5rem; color: #92400e;">
-                        Bester aktueller Preis: <strong>${product.lowest_price ? product.lowest_price.toFixed(2) + ' CHF' : 'N/A'}</strong>
-                        <br>
-                        <em>Alarm gilt für alle Shops - du wirst benachrichtigt wenn irgendein Shop deinen Zielpreis erreicht.</em>
+                    <div style="font-size: 0.8rem; margin-bottom: 0.5rem; color: #92400e;">
+                        Aktuell: <strong>${product.lowest_price ? product.lowest_price.toFixed(2) + ' CHF' : 'N/A'}</strong>
                     </div>
                 ` : ''}
                 <div class="alert-input-group">
@@ -277,15 +286,15 @@ function createProductCard(product) {
                     </button>
                 </div>
                 ${product.alert ? `
-                    <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #065f46;">
-                        ${product.alert.triggered ? `✓ Alarm wurde ausgelöst am ${formatDate(product.alert.triggered_at)}` : `Zielpreis: <strong>${product.alert.target_price.toFixed(2)} CHF</strong> - Aktuell bester Preis: <strong>${product.lowest_price ? product.lowest_price.toFixed(2) + ' CHF' : 'N/A'}</strong>`}
-                        ${product.alert.email_recipient ? `<br>📧 Empfänger: ${product.alert.email_recipient}` : '<br>📧 Empfänger: Standard-Adresse'}
+                    <div style="margin-top: 0.5rem; font-size: 0.8rem; color: #065f46;">
+                        ${product.alert.triggered ? `✓ Ausgelöst: ${formatDate(product.alert.triggered_at)}` : `Ziel: <strong>${product.alert.target_price.toFixed(2)} CHF</strong> | Aktuell: <strong>${product.lowest_price ? product.lowest_price.toFixed(2) + ' CHF' : 'N/A'}</strong>`}
+                        ${product.alert.email_recipient ? `<br>📧 ${product.alert.email_recipient}` : ''}
                     </div>
                 ` : ''}
             </div>
 
-            <div class="product-meta">
-                <span>Zuletzt geprüft: ${formatDate(product.last_checked)}</span>
+            <div class="product-meta" style="font-size: 0.8rem; margin: 0.5rem 0;">
+                <span>Aktualisiert: ${formatDate(product.last_checked)}</span>
             </div>
 
             <div class="product-actions">
@@ -629,6 +638,17 @@ async function removeAlert(alertId) {
         }
     } catch (error) {
         showMessage('Netzwerkfehler: ' + error.message, 'error');
+    }
+}
+
+// Toggle collapsible sections
+function toggleCollapsible(sectionId) {
+    const content = document.getElementById(sectionId);
+    const toggle = document.getElementById(`toggle-${sectionId}`);
+
+    if (content && toggle) {
+        content.classList.toggle('open');
+        toggle.classList.toggle('open');
     }
 }
 

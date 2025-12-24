@@ -236,24 +236,28 @@ h1 {
 
 .product-image {
     width: 100%;
-    height: 200px;
-    object-fit: cover;
-    background: var(--background);
+    height: 220px;
+    object-fit: contain;
+    object-position: center;
+    background: white;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border);
 }
 
 .product-content {
-    padding: 1.5rem;
+    padding: 1.25rem;
 }
 
 .product-name {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
     color: var(--text-primary);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    min-height: 2.4em;
 }
 
 .price-info {
@@ -261,9 +265,10 @@ h1 {
 }
 
 .current-price {
-    font-size: 2rem;
+    font-size: 1.75rem;
     font-weight: 700;
     color: var(--primary-color);
+    line-height: 1.2;
 }
 
 .price-stats {
@@ -327,14 +332,15 @@ h1 {
     background: #fef3c7;
     border: 2px solid #fbbf24;
     border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1rem;
+    padding: 0.875rem;
+    margin-bottom: 0.75rem;
 }
 
 .price-alert-section h4 {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     margin-bottom: 0.5rem;
     color: #92400e;
+    font-weight: 600;
 }
 
 .alert-input-group {
@@ -345,10 +351,10 @@ h1 {
 
 .alert-input {
     width: 100%;
-    padding: 0.5rem;
+    padding: 0.5rem 0.75rem;
     border: 2px solid #fbbf24;
     border-radius: 6px;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
 }
 
 .alert-active {
@@ -386,14 +392,20 @@ h1 {
 .product-actions {
     display: flex;
     gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.product-actions .btn {
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
 }
 
 .product-link {
     display: inline-block;
     color: var(--primary-color);
     text-decoration: none;
-    font-size: 0.9rem;
-    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
 }
 
 .product-link:hover {
@@ -401,11 +413,11 @@ h1 {
 }
 
 .chart-container {
-    height: 150px;
-    margin: 1rem 0;
+    height: 120px;
+    margin: 0;
     background: var(--background);
     border-radius: 8px;
-    padding: 1rem;
+    padding: 0.75rem;
     position: relative;
 }
 
@@ -419,11 +431,62 @@ h1 {
 }
 
 /* Product Sources Styles */
+/* Collapsible sections */
+.collapsible-section {
+    margin: 1rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.collapsible-header {
+    background: var(--background);
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: background 0.2s;
+    border-radius: 8px;
+}
+
+.collapsible-header:hover {
+    background: #e2e8f0;
+}
+
+.collapsible-header h4 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.collapsible-toggle {
+    font-size: 1.2rem;
+    transition: transform 0.3s;
+    color: var(--text-secondary);
+}
+
+.collapsible-toggle.open {
+    transform: rotate(180deg);
+}
+
+.collapsible-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+    padding: 0 1rem;
+}
+
+.collapsible-content.open {
+    max-height: 1000px;
+    padding: 1rem;
+}
+
 .product-sources {
     background: var(--background);
     border-radius: 8px;
-    padding: 1rem;
-    margin: 1rem 0;
+    padding: 0;
+    margin: 0;
 }
 
 .sources-title {
